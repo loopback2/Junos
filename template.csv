@@ -1,0 +1,8 @@
+mgmt_ip,site,device_type,hostname
+10.20.1.10,NYC,core_switch,NYC-core-1
+10.20.1.11,NYC,core_switch,NYX-core-2
+10.20.5.27,NYC,access_switch,NYC-acc-27
+10.20.2.40,NYC,dist_switch,NYC-dist-1
+10.30.0.10,ATL,spine_switch,atl-spine-1
+10.30.10.21,ATL,leaf_switch,atl-leaf-21
+10.50.2.90,TX,access_switch,tx-acc-9

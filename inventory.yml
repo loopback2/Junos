@@ -1,0 +1,22 @@
+sites:
+  DEN:
+    device_types:
+      core_switch:
+        devices:
+          - mgmt_ip: "10.20.1.10"
+            hostname: den-core-1
+          - mgmt_ip: "10.20.1.11"
+      access_switch:
+        devices:
+          - mgmt_ip: "10.20.5.27"
+            hostname: den-acc-27
+  ATL:
+    device_types:
+      spine_switch:
+        devices:
+          - mgmt_ip: "10.30.0.10"
+            hostname: atl-spine-1
+      leaf_switch:
+        devices:
+          - mgmt_ip: "10.30.10.21"
+            hostname: atl-leaf-21
