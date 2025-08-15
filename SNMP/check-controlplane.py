@@ -5,9 +5,15 @@ Audit Junos devices for presence of the substring:
 anywhere within:
   show configuration firewall family inet | display set | no-more
 
-- Netmiko + getpass
-- Concurrent SSH with clean teardown
-- CSV summary: host, reachable, found, matches, error
+Outputs:
+- CSV summary (--out): host, reachable, found, matches, error
+- TXT file listing devices that matched (default: <csvbase>_have.txt)
+- TXT file listing devices that did not match (default: <csvbase>_missing.txt)
+
+Run:
+  python3 audit_cp_snmp_term.py --devices devices.txt --out report.csv --workers 30
+  # optional:
+  # --have-file matched.txt --missing-file missing.txt
 """
 
 from __future__ import annotations
@@ -58,7 +64,7 @@ def check_host(host: str, username: str, password: str, timeouts: Dict[str, int]
             conn_timeout=timeouts["conn_timeout"],
         )
 
-        # Ensure pager is off; harmless if already unset
+        # Disable pager (harmless if already off)
         try:
             conn.send_command("set cli screen-length 0")
         except Exception:
@@ -93,6 +99,19 @@ def write_csv(rows: List[Tuple[str, bool, bool, int, str]], out_path: Path) -> N
         for r in rows:
             w.writerow(r)
 
+def write_list(lines: List[str], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+def default_txt_paths(csv_path: Path, have_file: Path | None, missing_file: Path | None) -> tuple[Path, Path]:
+    if have_file and missing_file:
+        return have_file, missing_file
+    base = csv_path.stem  # e.g., "report" from "report.csv"
+    parent = csv_path.parent
+    have = have_file if have_file else parent / f"{base}_have.txt"
+    missing = missing_file if missing_file else parent / f"{base}_missing.txt"
+    return have, missing
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Audit for presence of controlplane SNMP term substring.")
     ap.add_argument("--devices", required=True, type=Path, help="Path to devices.txt (one host/IP per line)")
@@ -102,6 +121,8 @@ def main() -> None:
     ap.add_argument("--auth-timeout", type=int, default=60, help="Auth timeout seconds (default 60)")
     ap.add_argument("--banner-timeout", type=int, default=60, help="Banner timeout seconds (default 60)")
     ap.add_argument("--conn-timeout", type=int, default=60, help="Connect timeout seconds (default 60)")
+    ap.add_argument("--have-file", type=Path, help="TXT path for devices WITH the substring")
+    ap.add_argument("--missing-file", type=Path, help="TXT path for devices WITHOUT the substring")
     args = ap.parse_args()
 
     hosts = load_devices(args.devices)
@@ -123,26 +144,34 @@ def main() -> None:
         for fut in as_completed(futs):
             results.append(fut.result())
 
+    # CSV
     write_csv(results, args.out)
+
+    # Build lists
+    reachable = [r for r in results if r[1]]
+    found = sorted([r[0] for r in reachable if r[2]])
+    missing = sorted([r[0] for r in reachable if not r[2]])
+
+    # TXT paths (defaults derived from CSV path)
+    have_path, missing_path = default_txt_paths(args.out, args.have_file, args.missing_file)
+    write_list(found, have_path)
+    write_list(missing, missing_path)
 
     # Console summary
     total = len(results)
-    reachable = [r for r in results if r[1]]
     unreachable = [r for r in results if not r[1]]
-    found = [r for r in reachable if r[2]]
-    missing = [r for r in reachable if not r[2]]
 
     print("\n=== Audit Summary ===")
     print(f"Total devices:  {total}")
     print(f"Reachable:      {len(reachable)}")
     print(f"Unreachable:    {len(unreachable)}")
-    print(f"Found:          {len(found)}")
-    print(f"Missing:        {len(missing)}")
+    print(f"Found:          {len(found)}  (listed in: {have_path})")
+    print(f"Missing:        {len(missing)} (listed in: {missing_path})")
 
     if missing:
         print("\nDevices missing substring:")
-        for host, *_ in sorted([(r[0],) for r in missing]):
-            print(f"  - {host}")
+        for h in missing:
+            print(f"  - {h}")
 
     if unreachable:
         print("\nUnreachable devices:")
